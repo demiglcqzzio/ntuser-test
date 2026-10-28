@@ -1,7 +1,14 @@
 #include <windows.h>
 #include <shellapi.h>
 
-// 核心逻辑：接收参数并生成文件
+// 手动实现 memset，满足编译器的初始化需求，彻底摆脱外部依赖
+#pragma function(memset)
+void* __cdecl memset(void* dest, int c, size_t count) {
+    char* bytes = (char*)dest;
+    while (count--) *bytes++ = (char)c;
+    return dest;
+}
+
 int RealMain(int argc, char* argv[]) {
     if (argc != 3) return 1;
 
@@ -42,12 +49,10 @@ int RealMain(int argc, char* argv[]) {
         return 1;
     }
 
-    // 直接利用 Win7 内核版本，不调用 RtlGetVersion 减少复杂依赖
     SaveHive(hHive, outputPath, 6, 1);
     return 0;
 }
 
-// 终极入口：完全脱离 C 运行库，自己接管程序起点
 void __stdcall EntryPoint() {
     int argc = 0;
     LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -55,7 +60,6 @@ void __stdcall EntryPoint() {
         ExitProcess(1);
     }
 
-    // 手工将宽字符参数转换为窄字符
     char arg1[MAX_PATH] = {0};
     char arg2[MAX_PATH] = {0};
     WideCharToMultiByte(CP_ACP, 0, argvW[1], -1, arg1, MAX_PATH, NULL, NULL);
