@@ -21,10 +21,8 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 编译为纯C目标文件，关闭安全检查和浮点标志
-        cl /c /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS /D_FLTUSED main.c
-        # 链接：使用自定义入口点，剥离所有默认 C 库
-        link /ENTRY:EntryPoint /SUBSYSTEM:CONSOLE,6.01 /NODEFAULTLIB /NODEFAULTLIB:libucrt.lib /NODEFAULTLIB:libvcruntime.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:msvcrt.lib main.obj kernel32.lib user32.lib shell32.lib
+        cl /c /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.c
+        link /ENTRY:EntryPoint /SUBSYSTEM:CONSOLE,6.01 /NODEFAULTLIB main.obj kernel32.lib user32.lib shell32.lib
 
     - name: Extract 32-bit offreg.dll
       run: |
