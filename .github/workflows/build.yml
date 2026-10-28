@@ -17,12 +17,14 @@ jobs:
       uses: ilammy/msvc-dev-cmd@v1
       with:
         arch: x86
-        toolset-version: '14.29'   # 强制使用 VS2019 (v142) 编译器
+        toolset-version: '14.29'
 
     - name: Compile with MSVC
       run: |
-        # 直接用旧编译器标准的静态链接，不需要任何花里胡哨的参数
-        cl /MT /O2 /D_CRT_SECURE_NO_WARNINGS main.c
+        # 编译为纯C目标文件，关闭安全检查和浮点标志
+        cl /c /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS /D_FLTUSED main.c
+        # 链接：使用自定义入口点，剥离所有默认 C 库
+        link /ENTRY:EntryPoint /SUBSYSTEM:CONSOLE,6.01 /NODEFAULTLIB /NODEFAULTLIB:libucrt.lib /NODEFAULTLIB:libvcruntime.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:msvcrt.lib main.obj kernel32.lib user32.lib shell32.lib
 
     - name: Extract 32-bit offreg.dll
       run: |
