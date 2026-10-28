@@ -13,19 +13,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup MSVC environment
+    - name: Setup MSVC environment (v142)
       uses: ilammy/msvc-dev-cmd@v1
       with:
         arch: x86
+        toolset-version: '14.29'   # 强制使用 VS2019 (v142) 编译器
 
     - name: Compile with MSVC
       run: |
-        # 编译最新防线版 main.cpp
-        cl /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.cpp shell32.lib
+        # 直接用旧编译器标准的静态链接，不需要任何花里胡哨的参数
+        cl /MT /O2 /D_CRT_SECURE_NO_WARNINGS main.c
 
     - name: Extract 32-bit offreg.dll
       run: |
-        # 提取 32 位 offreg.dll
         copy C:\Windows\SysWOW64\offreg.dll .\offreg.dll
 
     - name: Upload Artifact
