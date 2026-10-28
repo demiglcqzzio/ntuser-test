@@ -1,4 +1,4 @@
-name: Build NTUSER Generator
+name: Build NTUSER Generator (GCC)
 
 on:
   push:
@@ -13,16 +13,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup MSVC environment (v142)
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x86
-        toolset-version: '14.29'
-
-    - name: Compile with MSVC
+    - name: Download MinGW-w64 (MSVCRT runtime)
+      shell: pwsh
       run: |
-        cl /c /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.c
-        link /ENTRY:EntryPoint /SUBSYSTEM:CONSOLE,6.01 /NODEFAULTLIB main.obj kernel32.lib user32.lib shell32.lib
+        # 下载基于 MSVCRT 的 MinGW-w64（而非 UCRT 版本）
+        $url = "https://github.com/brechtsanders/winlibs_mingw/releases/download/13.2.0-16.0.6-11.0.1-msvcrt-r1/winlibs-i686-posix-dwarf-gcc-13.2.0-mingw-w64msvcrt-11.0.1-r1.zip"
+        Invoke-WebRequest -Uri $url -OutFile "mingw.zip"
+        Expand-Archive -Path "mingw.zip" -DestinationPath "mingw"
+        
+        # 将 GCC 路径添加到环境变量
+        $gccPath = (Get-ChildItem -Path "mingw" -Filter "bin" -Recurse -Directory | Select-Object -First 1).FullName
+        echo "$gccPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    - name: Compile with GCC
+      run: |
+        # -static 静态链接 GCC 基础库，防止依赖 libgcc_s_dw2-1.dll
+        gcc main.c -o main.exe -static -lshell32 -luser32 -ladvapi32
 
     - name: Extract 32-bit offreg.dll
       run: |
