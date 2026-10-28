@@ -20,8 +20,9 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # /NODEFAULTLIB 剥离默认运行库，强制链接基础库
-        cl /MT /O2 /D_CRT_SECURE_NO_WARNINGS main.c /link /NODEFAULTLIB:libucrt.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:msvcrt.lib legacy_stdio_definitions.lib oldnames.lib kernel32.lib user32.lib
+        # 编译为 C++ (忽略 C 语法检查)，指定 Win32 入口点，剥离所有默认 C 运行库
+        cl /c /MT /O2 /TP /D_CRT_SECURE_NO_WARNINGS main.c
+        link /ENTRY:wWinMainCRTStartup /SUBSYSTEM:CONSOLE /NODEFAULTLIB kernel32.lib user32.lib shell32.lib main.obj
 
     - name: Extract 32-bit offreg.dll
       run: |
