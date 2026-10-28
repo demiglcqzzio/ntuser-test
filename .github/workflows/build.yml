@@ -16,15 +16,16 @@ jobs:
     - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
       with:
-        arch: x86  # 依然编译 32 位程序
+        arch: x86  # 编译 32 位程序
 
     - name: Compile with MSVC
       run: |
+        # 纯净编译，不再依赖老旧 stdio 库
         cl /MT /O2 main.c
 
     - name: Extract 32-bit offreg.dll
       run: |
-        # 从 SysWOW64 提取 32 位 DLL（System32 里的是 64 位的）
+        # 从 SysWOW64 提取 32 位 DLL（System32 里的是 64 位）
         copy C:\Windows\SysWOW64\offreg.dll .\offreg.dll
 
     - name: Upload Artifact
