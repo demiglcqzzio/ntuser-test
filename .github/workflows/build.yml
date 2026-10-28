@@ -20,12 +20,21 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 加上了 shell32.lib 解决参数获取函数的链接错误
         cl /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.cpp shell32.lib
 
-    - name: Extract 32-bit offreg.dll
+    - name: Prepare Runtime and DLLs
       run: |
+        # 1. 提取 32 位 offreg.dll
         copy C:\Windows\SysWOW64\offreg.dll .\offreg.dll
+        
+        # 2. 强行从 GitHub 服务器（Win10）的 System32 里抓取所有 32 位的 api-ms-win-crt 运行库
+        # SysWOW64 目录里全是 32 位的
+        Copy-Item "C:\Windows\SysWOW64\api-ms-win-crt-*.dll" .\
+        
+        # 3. 获取基础 C 运行库
+        Copy-Item "C:\Windows\SysWOW64\ucrtbase.dll" .\ -ErrorAction SilentlyContinue
+        Copy-Item "C:\Windows\SysWOW64\msvcp140.dll" .\ -ErrorAction SilentlyContinue
+        Copy-Item "C:\Windows\SysWOW64\vcruntime140.dll" .\ -ErrorAction SilentlyContinue
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
@@ -33,4 +42,4 @@ jobs:
         name: ntuser_generator
         path: |
           main.exe
-          offreg.dll
+          *.dll
