@@ -19,18 +19,31 @@ typedef struct {
     HMODULE hMod;
 } OffregApi;
 
+// 强制通过 Kernel32 老接口加载，避开新版 API
+HMODULE WINAPI SafeLoadLibraryA(LPCSTR lpLibFileName) {
+    HMODULE (WINAPI *pLoadLibraryA)(LPCSTR) = (HMODULE (WINAPI *)(LPCSTR))GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
+    if (pLoadLibraryA) return pLoadLibraryA(lpLibFileName);
+    return NULL;
+}
+
+FARPROC WINAPI SafeGetProcAddress(HMODULE hModule, LPCSTR lpProcName) {
+    FARPROC (WINAPI *pGetProcAddress)(HMODULE, LPCSTR) = (FARPROC (WINAPI *)(HMODULE, LPCSTR))GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetProcAddress");
+    if (pGetProcAddress) return pGetProcAddress(hModule, lpProcName);
+    return NULL;
+}
+
 BOOL InitOffreg(OffregApi* api) {
-    api->hMod = LoadLibraryA("offreg.dll");
-    if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\SysWOW64\\offreg.dll");
-    if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\System32\\offreg.dll");
+    api->hMod = SafeLoadLibraryA("offreg.dll");
+    if (!api->hMod) api->hMod = SafeLoadLibraryA("C:\\Windows\\SysWOW64\\offreg.dll");
+    if (!api->hMod) api->hMod = SafeLoadLibraryA("C:\\Windows\\System32\\offreg.dll");
     if (!api->hMod) return FALSE;
 
-    api->CreateHive = (pORCreateHive)GetProcAddress(api->hMod, "ORCreateHive");
-    api->CreateKey  = (pORCreateKey)GetProcAddress(api->hMod, "ORCreateKey");
-    api->SetValue   = (pORSetValue)GetProcAddress(api->hMod, "ORSetValue");
-    api->SaveHive   = (pORSaveHive)GetProcAddress(api->hMod, "ORSaveHive");
-    api->CloseHive  = (pORCloseHive)GetProcAddress(api->hMod, "ORCloseHive");
-    api->CloseKey   = (pORCloseKey)GetProcAddress(api->hMod, "ORCloseKey");
+    api->CreateHive = (pORCreateHive)SafeGetProcAddress(api->hMod, "ORCreateHive");
+    api->CreateKey  = (pORCreateKey)SafeGetProcAddress(api->hMod, "ORCreateKey");
+    api->SetValue   = (pORSetValue)SafeGetProcAddress(api->hMod, "ORSetValue");
+    api->SaveHive   = (pORSaveHive)SafeGetProcAddress(api->hMod, "ORSaveHive");
+    api->CloseHive  = (pORCloseHive)SafeGetProcAddress(api->hMod, "ORCloseHive");
+    api->CloseKey   = (pORCloseKey)SafeGetProcAddress(api->hMod, "ORCloseKey");
 
     if (!api->CreateHive || !api->CreateKey || !api->SetValue || !api->SaveHive || !api->CloseHive || !api->CloseKey) return FALSE;
     return TRUE;
@@ -97,7 +110,12 @@ int main(int argc, char* argv[]) {
     }
 
     api.CloseKey(hKey);
-    api.SaveHive(hHive, outputPath, osMajor, osMinor);
+
+    if (api.SaveHive(hHive, outputPath, osMajor, osMinor) != ERROR_SUCCESS) {
+        api.CloseHive(hHive);
+        return 1;
+    }
+
     api.CloseHive(hHive);
 
     printf("[+] Successfully generated VALID NTUSER.MAN at: %s\n", argv[2]);
