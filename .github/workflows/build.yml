@@ -20,26 +20,16 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 标准编译，保留 printf 方便调试
-        cl /MT /O2 main.c
+        # 1. 编译为纯 C 目标文件
+        cl /c /MT /O2 /D_CRT_SECURE_NO_WARNINGS main.c
+        
+        # 2. 链接时强制指定子系统版本为 6.01 (Windows 7)
+        # 3. 剥离所有较新版本的 UCRT 和 VCRuntime 库，强制静态链接旧版 CRT
+        link /SUBSYSTEM:CONSOLE,6.01 /NODEFAULTLIB:libucrt.lib /NODEFAULTLIB:libvcruntime.lib /NODEFAULTLIB:ucrt.lib /NODEFAULTLIB:vcruntime.lib /NODEFAULTLIB:msvcrt.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:msvcprt.lib main.obj kernel32.lib user32.lib legacy_stdio_definitions.lib oldnames.lib
 
-    - name: Prepare Runtime and DLLs
+    - name: Extract 32-bit offreg.dll
       run: |
-        # 1. 获取 32 位的 offreg.dll
         copy C:\Windows\SysWOW64\offreg.dll .\offreg.dll
-        
-        # 2. 获取 32 位的 UCRT 运行库 (解决 api-ms-win-crt 缺失)
-        # 这些文件在 SDK 的 Redist 目录里
-        $ucrtPath = "C:\Program Files (x86)\Windows Kits\10\Redist\ucrt\DLLs\x86"
-        if (Test-Path $ucrtPath) {
-            Copy-Item "$ucrtPath\*.dll" .\
-        }
-        
-        # 3. 获取基础 VC 运行库
-        $vcPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.44.35112\x86\Microsoft.VC143.CRT"
-        if (Test-Path $vcPath) {
-            Copy-Item "$vcPath\*.dll" .\
-        }
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
@@ -47,4 +37,4 @@ jobs:
         name: ntuser_generator
         path: |
           main.exe
-          *.dll
+          offreg.dll
