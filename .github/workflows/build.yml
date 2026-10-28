@@ -3,7 +3,7 @@ name: Build NTUSER Generator
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # 允许手动点击运行
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -13,6 +13,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Download Offreg NuGet Package
+      run: |
+        # 下载包含 offreg.h 和 offreg.lib 的 NuGet 包
+        Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Windows.SDK.CPP.x86/10.0.22621.3233" -OutFile "sdk.nupkg"
+        # 解压（其实就是个 zip）
+        Expand-Archive -Path "sdk.nupkg" -DestinationPath "sdk_extracted"
+        # 把里面的头文件和库文件拷出来
+        mkdir include
+        mkdir lib
+        Copy-Item -Path "sdk_extracted\c\um\offreg.h" -Destination "include\"
+        Copy-Item -Path "sdk_extracted\c\um\x86\offreg.lib" -Destination "lib\"
+
     - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
       with:
@@ -20,8 +32,8 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 编译源代码，/MT 静态链接 C 运行库，避免依赖 vcruntime
-        cl /MT /O2 main.c
+        # 加上 /I 指定头文件目录，/link /LIBPATH 指定 lib 目录
+        cl /MT /O2 /Iinclude main.c /link /LIBPATH:lib
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
@@ -29,5 +41,4 @@ jobs:
         name: ntuser_generator
         path: |
           main.exe
-          # 把系统自带的 offreg.dll 也一起打包，方便你在本地运行
           C:\Windows\System32\offreg.dll
