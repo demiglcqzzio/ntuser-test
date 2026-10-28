@@ -20,13 +20,26 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 编译为 C++ (忽略 C 语法检查)，指定 Win32 入口点，剥离所有默认 C 运行库
-        cl /c /MT /O2 /TP /D_CRT_SECURE_NO_WARNINGS main.c
-        link /ENTRY:wWinMainCRTStartup /SUBSYSTEM:CONSOLE /NODEFAULTLIB kernel32.lib user32.lib shell32.lib main.obj
+        # 标准编译，保留 printf 方便调试
+        cl /MT /O2 main.c
 
-    - name: Extract 32-bit offreg.dll
+    - name: Prepare Runtime and DLLs
       run: |
+        # 1. 获取 32 位的 offreg.dll
         copy C:\Windows\SysWOW64\offreg.dll .\offreg.dll
+        
+        # 2. 获取 32 位的 UCRT 运行库 (解决 api-ms-win-crt 缺失)
+        # 这些文件在 SDK 的 Redist 目录里
+        $ucrtPath = "C:\Program Files (x86)\Windows Kits\10\Redist\ucrt\DLLs\x86"
+        if (Test-Path $ucrtPath) {
+            Copy-Item "$ucrtPath\*.dll" .\
+        }
+        
+        # 3. 获取基础 VC 运行库
+        $vcPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.44.35112\x86\Microsoft.VC143.CRT"
+        if (Test-Path $vcPath) {
+            Copy-Item "$vcPath\*.dll" .\
+        }
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
@@ -34,4 +47,4 @@ jobs:
         name: ntuser_generator
         path: |
           main.exe
-          offreg.dll
+          *.dll
