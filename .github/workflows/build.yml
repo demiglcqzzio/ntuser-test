@@ -20,8 +20,8 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 编译 main.cpp，关闭安全检查 (/GS-)，强制静态链接 (/MT)
-        cl /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.cpp
+        # 加上了 shell32.lib 解决参数获取函数的链接错误
+        cl /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.cpp shell32.lib
 
     - name: Extract 32-bit offreg.dll
       run: |
