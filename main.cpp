@@ -1,5 +1,66 @@
 #include <windows.h>
 
+// --- 手动声明底层 ntdll 函数，绕过新版 API 依赖 ---
+typedef struct _UNICODE_STRING {
+    USHORT Length;
+    USHORT MaximumLength;
+    PWSTR  Buffer;
+} UNICODE_STRING, *PUNICODE_STRING;
+
+typedef struct _PEB_LDR_DATA {
+    BYTE Reserved1[8];
+    PVOID Reserved2[3];
+    LIST_ENTRY InMemoryOrderModuleList;
+} PEB_LDR_DATA, *PPEB_LDR_DATA;
+
+typedef struct _LDR_DATA_TABLE_ENTRY {
+    PVOID Reserved1[2];
+    LIST_ENTRY InMemoryOrderLinks;
+    PVOID Reserved2[2];
+    PVOID DllBase;
+    PVOID EntryPoint;
+    PVOID Reserved3;
+    UNICODE_STRING FullDllName;
+    BYTE Reserved4[8];
+    PVOID Reserved5[3];
+    union {
+        ULONG CheckSum;
+        PVOID Reserved6;
+    };
+    ULONG TimeDateStamp;
+} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
+
+typedef struct _PEB {
+    BYTE Reserved1[2];
+    BYTE BeingDebugged;
+    BYTE Reserved2[1];
+    PVOID Reserved3[2];
+    PPEB_LDR_DATA Ldr;
+} PEB, *PPEB;
+
+// 手动实现加载 DLL
+HMODULE ManualLoadLibrary(const char* libName) {
+    WCHAR wLibName[MAX_PATH];
+    MultiByteToWideChar(CP_ACP, 0, libName, -1, wLibName, MAX_PATH);
+    
+    UNICODE_STRING ustr;
+    ustr.Buffer = wLibName;
+    ustr.Length = (USHORT)(wcslen(wLibName) * sizeof(WCHAR));
+    ustr.MaximumLength = ustr.Length + sizeof(WCHAR);
+    
+    HMODULE hMod = NULL;
+    // 直接通过系统调用加载
+    typedef LONG (WINAPI* LdrLoadDll_t)(PWCHAR, PULONG, PUNICODE_STRING, PHANDLE);
+    LdrLoadDll_t pLdrLoadDll = (LdrLoadDll_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "LdrLoadDll");
+    if (pLdrLoadDll) {
+        HANDLE h = NULL;
+        pLdrLoadDll(NULL, 0, &ustr, &h);
+        hMod = (HMODULE)h;
+    }
+    return hMod;
+}
+// ------------------------------------------------
+
 typedef PVOID ORHKEY;
 typedef LONG (WINAPI* pORCreateHive)(ORHKEY*);
 typedef LONG (WINAPI* pORCreateKey)(ORHKEY, LPCWSTR, LPCWSTR, DWORD, REGSAM, PVOID, ORHKEY*, LPDWORD);
@@ -19,9 +80,9 @@ typedef struct {
 } OffregApi;
 
 BOOL InitOffreg(OffregApi* api) {
-    api->hMod = LoadLibraryA("offreg.dll");
-    if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\SysWOW64\\offreg.dll");
-    if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\System32\\offreg.dll");
+    api->hMod = ManualLoadLibrary("offreg.dll");
+    if (!api->hMod) api->hMod = ManualLoadLibrary("C:\\Windows\\SysWOW64\\offreg.dll");
+    if (!api->hMod) api->hMod = ManualLoadLibrary("C:\\Windows\\System32\\offreg.dll");
     if (!api->hMod) return FALSE;
 
     api->CreateHive = (pORCreateHive)GetProcAddress(api->hMod, "ORCreateHive");
