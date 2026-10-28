@@ -20,26 +20,13 @@ jobs:
 
     - name: Compile with MSVC
       run: |
+        # 编译最新防线版 main.cpp
         cl /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.cpp shell32.lib
 
-    - name: Prepare Runtime and DLLs
+    - name: Extract 32-bit offreg.dll
       run: |
-        # 1. 提取 32 位 offreg.dll
+        # 提取 32 位 offreg.dll
         copy C:\Windows\SysWOW64\offreg.dll .\offreg.dll
-        
-        # 2. 从 Windows SDK 提取全套 32 位 UCRT 运行库 (这才是真正的源头)
-        $ucrtPath = "C:\Program Files (x86)\Windows Kits\10\Redist\ucrt\DLLs\x86"
-        if (Test-Path $ucrtPath) {
-            Copy-Item "$ucrtPath\*.dll" .\
-        } else {
-            Write-Error "找不到 UCRT 运行库目录！"
-        }
-        
-        # 3. 从 Visual Studio 提取基础 C++ 运行库
-        $vcPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\*\x86\Microsoft.VC143.CRT"
-        if (Test-Path $vcPath) {
-            Copy-Item "$vcPath\*.dll" .\
-        }
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
@@ -47,4 +34,4 @@ jobs:
         name: ntuser_generator
         path: |
           main.exe
-          *.dll
+          offreg.dll
