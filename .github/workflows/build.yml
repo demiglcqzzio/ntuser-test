@@ -16,20 +16,14 @@ jobs:
     - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
       with:
-        arch: x86
+        arch: x86  # 保持 32 位编译
 
     - name: Compile with MSVC
       run: |
         cl /MT /O2 main.c
 
-    - name: Copy offreg.dll to workspace
-      run: |
-        copy C:\Windows\System32\offreg.dll .\offreg.dll
-
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ntuser_generator
-        path: |
-          main.exe
-          offreg.dll
+        path: main.exe  # 只打包 exe，不需要 DLL
