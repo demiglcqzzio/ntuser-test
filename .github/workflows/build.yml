@@ -20,12 +20,8 @@ jobs:
 
     - name: Compile with MSVC
       run: |
-        # 1. 编译为纯 C 目标文件
-        cl /c /MT /O2 /D_CRT_SECURE_NO_WARNINGS main.c
-        
-        # 2. 链接时强制指定子系统版本为 6.01 (Windows 7)
-        # 3. 剥离所有较新版本的 UCRT 和 VCRuntime 库，强制静态链接旧版 CRT
-        link /SUBSYSTEM:CONSOLE,6.01 /NODEFAULTLIB:libucrt.lib /NODEFAULTLIB:libvcruntime.lib /NODEFAULTLIB:ucrt.lib /NODEFAULTLIB:vcruntime.lib /NODEFAULTLIB:msvcrt.lib /NODEFAULTLIB:libcmt.lib /NODEFAULTLIB:msvcprt.lib main.obj kernel32.lib user32.lib legacy_stdio_definitions.lib oldnames.lib
+        # 编译 main.cpp，关闭安全检查 (/GS-)，强制静态链接 (/MT)
+        cl /MT /GS- /O2 /D_CRT_SECURE_NO_WARNINGS main.cpp
 
     - name: Extract 32-bit offreg.dll
       run: |
