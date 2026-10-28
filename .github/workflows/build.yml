@@ -13,17 +13,28 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download Offreg NuGet Package
+    - name: Download and Locate Offreg
+      shell: pwsh
       run: |
-        # 下载包含 offreg.h 和 offreg.lib 的 NuGet 包
+        # 1. 下载 NuGet 包
         Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Windows.SDK.CPP.x86/10.0.22621.3233" -OutFile "sdk.nupkg"
-        # 解压（其实就是个 zip）
         Expand-Archive -Path "sdk.nupkg" -DestinationPath "sdk_extracted"
-        # 把里面的头文件和库文件拷出来
-        mkdir include
-        mkdir lib
-        Copy-Item -Path "sdk_extracted\c\um\offreg.h" -Destination "include\"
-        Copy-Item -Path "sdk_extracted\c\um\x86\offreg.lib" -Destination "lib\"
+        
+        # 2. 暴力搜索 offreg.h 和 offreg.lib 的位置
+        $h = Get-ChildItem -Path "sdk_extracted" -Filter "offreg.h" -Recurse | Select-Object -First 1
+        $l = Get-ChildItem -Path "sdk_extracted" -Filter "offreg.lib" -Recurse | Select-Object -First 1
+        
+        if (-not $h -or -not $l) {
+            Write-Error "Could not find offreg.h or offreg.lib in the package"
+            exit 1
+        }
+        
+        Write-Host "Found offreg.h at: $($h.FullName)"
+        Write-Host "Found offreg.lib at: $($l.FullName)"
+        
+        # 3. 把它们所在目录直接输出给环境变量
+        echo "OFFREG_INC=$($h.DirectoryName)" >> $env:GITHUB_ENV
+        echo "OFFREG_LIB=$($l.DirectoryName)" >> $env:GITHUB_ENV
 
     - name: Setup MSVC environment
       uses: ilammy/msvc-dev-cmd@v1
@@ -31,9 +42,10 @@ jobs:
         arch: x86
 
     - name: Compile with MSVC
+      shell: pwsh
       run: |
-        # 加上 /I 指定头文件目录，/link /LIBPATH 指定 lib 目录
-        cl /MT /O2 /Iinclude main.c /link /LIBPATH:lib
+        # 动态指定搜索路径，不再使用 #pragma comment(lib) 避免找不到
+        cl /MT /O2 /I"$env:OFFREG_INC" main.c /link /LIBPATH:"$env:OFFREG_LIB"
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
