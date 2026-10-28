@@ -1,0 +1,33 @@
+name: Build NTUSER Generator
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # 允许手动点击运行
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSVC environment
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x86
+
+    - name: Compile with MSVC
+      run: |
+        # 编译源代码，/MT 静态链接 C 运行库，避免依赖 vcruntime
+        cl /MT /O2 main.c
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ntuser_generator
+        path: |
+          main.exe
+          # 把系统自带的 offreg.dll 也一起打包，方便你在本地运行
+          C:\Windows\System32\offreg.dll
