@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <offreg.h>
 
-#pragma comment(lib, "offreg.lib")
 
 BOOL SetHiveValue(ORHKEY hRoot, LPCWSTR subKey, LPCWSTR valueName, LPCWSTR data) {
     ORHKEY hKey = NULL;
